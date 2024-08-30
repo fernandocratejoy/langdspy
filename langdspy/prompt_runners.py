@@ -255,10 +255,10 @@ class PromptRunner(RunnableSerializable):
             if config is None:
                 config = {}
 
-            if 'llm' not in config:
+            llm = config.get('llm')
+            if llm is None:
                 raise ValueError("'llm' is not present in the config")
 
-            llm = config['llm']
             max_retries = config.get('max_tries', 3)
 
             if '__examples__' in config:
@@ -270,7 +270,7 @@ class PromptRunner(RunnableSerializable):
             formatted_prompt = self.template.format_prompt(**kwargs, llm_type=llm_type)
             
             res = self._invoke_with_retries(
-                lambda: llm.invoke(formatted_prompt).content,
+                lambda: llm.invoke(formatted_prompt, config=config).content,
                 input,
                 max_retries,
                 config=config
