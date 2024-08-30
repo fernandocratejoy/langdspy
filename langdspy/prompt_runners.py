@@ -244,25 +244,36 @@ class PromptRunner(RunnableSerializable):
                 return {attr_name: None for attr_name in self.template.output_variables.keys()}
  
     def invoke(self, input: Input, config: Optional[RunnableConfig] = {}) -> Output:
-        chain = (
-            self.template
-            | config['llm']
-            | StrOutputParser()
-        )
+        try:
+            logger.debug(f"PromptRunner invoke called with input: {input}")
+            logger.debug(f"Config: {config}")
 
-        max_retries = config.get('max_tries', 3)
+            chain = (
+                self.template
+                | config['llm']
+                | StrOutputParser()
+            )
 
-        if '__examples__' in config:
-            input['__examples__'] = config['__examples__']
+            max_retries = config.get('max_tries', 3)
 
-        res = self._invoke_with_retries(chain, input, max_retries, config=config)
+            if '__examples__' in config:
+                input['__examples__'] = config['__examples__']
 
-        prediction_data = {**input, **res}
+            res = self._invoke_with_retries(chain, input, max_retries, config=config)
+            logger.debug(f"Result from _invoke_with_retries: {res}")
 
+            prediction_data = {**input, **res}
+            logger.debug(f"Prediction data: {prediction_data}")
 
-        prediction = Prediction(**prediction_data)
+            prediction = Prediction(**prediction_data)
+            logger.debug(f"Final prediction: {prediction}")
 
-        return prediction
+            return prediction
+        except Exception as e:
+            logger.error(f"Error in PromptRunner invoke: {str(e)}")
+            import traceback
+            logger.error(traceback.format_exc())
+            raise
 
 
 class MultiPromptRunner(PromptRunner):
