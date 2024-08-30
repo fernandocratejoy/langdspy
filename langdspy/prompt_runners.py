@@ -115,6 +115,7 @@ class PromptRunner(RunnableSerializable):
         
         logger.debug(f"LLM type: {llm_type} - model {llm_model}")
         prompt_res = None
+        last_error = None
 
         while max_tries >= 1:
             start_time = time.time()
@@ -127,16 +128,18 @@ class PromptRunner(RunnableSerializable):
 
                 if validation_err is None:
                     return parsed_output
+                last_error = validation_err
 
             except Exception as e:
                 logger.error(f"Error in _invoke_with_retries: {str(e)}")
                 self._handle_exception(e, max_tries)
+                last_error = str(e)
 
             max_tries -= 1
             if max_tries >= 1:
                 self._handle_retry(max_tries)
 
-        return self._handle_failure(hard_fail, total_max_tries, prompt_res)
+        return self._handle_failure(hard_fail, total_max_tries, prompt_res, last_error)
 
     def _get_llm_info(self, config):
         llm_type = config.get('llm_type') or self._determine_llm_type(config['llm'])
@@ -229,11 +232,12 @@ class PromptRunner(RunnableSerializable):
         logger.error(f"Output validation failed for prompt runner {self.template.__class__.__name__}, pausing before we retry")
         time.sleep(random.uniform(0.05, 0.25))
 
-    def _handle_failure(self, hard_fail, total_max_tries, prompt_res):
+    def _handle_failure(self, hard_fail, total_max_tries, prompt_res, last_error):
+        error_message = f"Output validation failed for prompt runner {self.template.__class__.__name__} after {total_max_tries} tries. Last error: {last_error}"
         if hard_fail:
-            raise ValueError(f"Output validation failed for prompt runner {self.template.__class__.__name__} after {total_max_tries} tries.")
+            raise ValueError(error_message)
         else:
-            logger.error(f"Output validation failed for prompt runner {self.template.__class__.__name__} after {total_max_tries} tries, returning None.")
+            logger.error(error_message + " Returning default values.")
             if len(self.template.output_variables.keys()) == 1:
                 return {attr_name: prompt_res for attr_name in self.template.output_variables.keys()}
             else:
