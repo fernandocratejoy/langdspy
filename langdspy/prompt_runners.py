@@ -159,6 +159,8 @@ class PromptRunner(RunnableSerializable):
         try:
             if llm_type == 'anthropic':
                 prompt_res = chain.invoke(formatted_prompt, config=config)
+            elif llm_type == 'openai_json':
+                prompt_res = chain.invoke(formatted_prompt, config=config)
             else:
                 prompt_res = chain.invoke(invoke_args, config=config)
             return formatted_prompt, prompt_res
