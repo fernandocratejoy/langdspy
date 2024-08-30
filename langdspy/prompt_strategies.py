@@ -57,6 +57,17 @@ class PromptSignature(BasePromptTemplate, BaseModel):
 
         self.validate_examples()
 
+    def _validate_input(self, input_dict: Dict[str, Any]) -> Dict[str, Any]:
+        validated_input = {}
+        for name, field in self.input_variables.items():
+            if name not in input_dict:
+                raise ValueError(f"Missing input: {name}")
+            value = input_dict[name]
+            if not field.validate_value({}, value):
+                raise ValueError(f"Invalid input for {name}: {value}")
+            validated_input[name] = field.transform_value(value)
+        return validated_input
+
     def validate_examples(self):
         for example_input, example_output in self.__examples__:
             # Check input fields
@@ -111,14 +122,16 @@ class PromptStrategy(BaseModel):
         examples = kwargs.pop('__examples__', self.__examples__)  # Add this line
 
         try:
-            self.validate_inputs(kwargs)
+            validated_kwargs = self._validate_input(kwargs)
 
             if llm_type == 'openai':
-                prompt = self._format_openai_prompt(trained_state, use_training, examples, **kwargs)
+                prompt = self._format_openai_prompt(trained_state, use_training, examples, **validated_kwargs)
             elif llm_type == 'openai_json':
-                prompt = self._format_openai_json_prompt(trained_state, use_training, examples, **kwargs)
+                prompt = self._format_openai_json_prompt(trained_state, use_training, examples, **validated_kwargs)
             elif llm_type == 'anthropic' or llm_type == 'fake_anthropic':
-                prompt = self._format_anthropic_prompt(trained_state, use_training, examples, **kwargs)
+                prompt = self._format_anthropic_prompt(trained_state, use_training, examples, **validated_kwargs)
+            else:
+                raise ValueError(f"Unsupported LLM type: {llm_type}")
 
             return prompt
         except Exception as e:
