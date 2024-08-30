@@ -301,77 +301,61 @@ class DefaultPromptStrategy(PromptStrategy):
         return prompt
 
     def _format_anthropic_prompt(self, trained_state, use_training, examples, **kwargs) -> str:
-        # print(f"Formatting prompt {kwargs}")
-        # prompt = "Follow the following format. Attributes that have values should not be changed or repeated. "
-        prompt = ""
+        messages = []
 
-        output_field_names = ', '.join([output_field.name for output_field in self.output_variables.values()])
-        # Format the instruction with the extracted names
-        prompt += f"Provide answers for output fields {output_field_names}. Follow the XML output format, only show the output fields do not repeat the hints, input fields or examples.\n"
+        # System message
+        system_message = f"Provide answers for output fields {', '.join([output_field.name for output_field in self.output_variables.values()])}. Follow the XML output format, only show the output fields do not repeat the hints, input fields or examples."
+        messages.append({"role": "system", "content": system_message})
 
+        # Hints
         if self.hint_variables:
-            prompt += "\n<hints>\n"
-            for _, hint_field in self.hint_variables.items():
-                prompt += hint_field.format_prompt_description("anthropic") + "\n"
-            prompt += "</hints>\n"
+            hint_content = "\n".join([hint_field.format_prompt_description("anthropic") for _, hint_field in self.hint_variables.items()])
+            messages.append({"role": "system", "content": f"Hints:\n{hint_content}"})
 
-        prompt += "\n\n<input_fields>\n"
-        for input_name, input_field in self.input_variables.items():
-            # prompt += f"⏎{input_field.name}: {input_field.desc}\n"
-            prompt += input_field.format_prompt_description("anthropic") + "\n"
-        prompt += "</input_fields>\n"
-        prompt += "\n<output_fields>\n"
-        for output_name, output_field in self.output_variables.items():
-            prompt += output_field.format_prompt_description("anthropic") + "\n"
-            # prompt += f"{self.OUTPUT_TOKEN}{output_field.name}: {output_field.desc}\n"
-        prompt += "</output_fields>\n"
+        # Input and Output fields description
+        fields_description = "<input_fields>\n"
+        fields_description += "\n".join([input_field.format_prompt_description("anthropic") for _, input_field in self.input_variables.items()])
+        fields_description += "\n</input_fields>\n<output_fields>\n"
+        fields_description += "\n".join([output_field.format_prompt_description("anthropic") for _, output_field in self.output_variables.items()])
+        fields_description += "\n</output_fields>"
+        messages.append({"role": "system", "content": fields_description})
 
+        # Examples
         if examples:
-            prompt += "\n<examples>\n"
             for example_input, example_output in examples:
-                prompt += "\n<example>\n"
-                prompt += "<input>\n"
-                for input_name, input_field in self.input_variables.items():
-                    prompt += input_field.format_prompt_value(example_input.get(input_name), "anthropic") + "\n"
-                prompt += "</input>\n"
-                prompt += "<output>\n"
-                for output_name, output_field in self.output_variables.items():
-                    if isinstance(example_output, dict):
-                        prompt += output_field.format_prompt_value(example_output.get(output_name), "anthropic") + "\n"
-                    else:
-                        prompt += output_field.format_prompt_value(example_output, "anthropic") + "\n"
-                prompt += "</output>\n"
-                prompt += "</example>\n"
-            prompt += "</examples>\n"
+                example_message = "<example>\n<input>\n"
+                example_message += "\n".join([input_field.format_prompt_value(example_input.get(input_name), "anthropic") for input_name, input_field in self.input_variables.items()])
+                example_message += "\n</input>\n<output>\n"
+                if isinstance(example_output, dict):
+                    example_message += "\n".join([output_field.format_prompt_value(example_output.get(output_name), "anthropic") for output_name, output_field in self.output_variables.items()])
+                else:
+                    example_message += "\n".join([output_field.format_prompt_value(example_output, "anthropic") for output_name, output_field in self.output_variables.items()])
+                example_message += "\n</output>\n</example>"
+                messages.append({"role": "system", "content": example_message})
 
+        # Trained examples
         if trained_state and trained_state.examples and use_training:
-            prompt += "\n<examples>\n"
             for example_X, example_y in trained_state.examples:
-                prompt += "\n<example>\n"
-                prompt += "<input>\n"
-                for input_name, input_field in self.input_variables.items():
-                    prompt += input_field.format_prompt_value(example_X.get(input_name), "anthropic") + "\n"
-                prompt += "</input>\n"
-                prompt += "<output>\n"
-                for output_name, output_field in self.output_variables.items():
-                    if isinstance(example_y, dict):
-                        prompt += output_field.format_prompt_value(example_y.get(output_name), "anthropic") + "\n"
-                    else:
-                        prompt += output_field.format_prompt_value(example_y, "anthropic") + "\n"
-                prompt += "</output>\n"
-                prompt += "</example>\n"
-            prompt += "</examples>\n"
+                trained_example_message = "<example>\n<input>\n"
+                trained_example_message += "\n".join([input_field.format_prompt_value(example_X.get(input_name), "anthropic") for input_name, input_field in self.input_variables.items()])
+                trained_example_message += "\n</input>\n<output>\n"
+                if isinstance(example_y, dict):
+                    trained_example_message += "\n".join([output_field.format_prompt_value(example_y.get(output_name), "anthropic") for output_name, output_field in self.output_variables.items()])
+                else:
+                    trained_example_message += "\n".join([output_field.format_prompt_value(example_y, "anthropic") for output_name, output_field in self.output_variables.items()])
+                trained_example_message += "\n</output>\n</example>"
+                messages.append({"role": "system", "content": trained_example_message})
 
-        prompt += "\n<input>\n"
-        for input_name, input_field in self.input_variables.items():
-            prompt += input_field.format_prompt_value(kwargs.get(input_name), "anthropic") + "\n"
-        prompt += "</input>\n"
+        # User input
+        user_input = "<input>\n"
+        user_input += "\n".join([input_field.format_prompt_value(kwargs.get(input_name), "anthropic") for input_name, input_field in self.input_variables.items()])
+        user_input += "\n</input>"
+        messages.append({"role": "user", "content": user_input})
 
-        prompt += "\n<output>\n"
-        for output_name, output_field in self.output_variables.items():
-            prompt += output_field.format_prompt("anthropic") + "\n"
-        prompt += "</output>\n"
-        return prompt
+        # Assistant response format
+        messages.append({"role": "system", "content": "Respond with the output in the following format:\n<output>\n[Your response here]\n</output>"})
+
+        return messages
 
     def _parse_openai_output_to_fields(self, output: str) -> dict:
         try:
