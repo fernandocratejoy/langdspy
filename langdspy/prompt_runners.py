@@ -252,6 +252,9 @@ class PromptRunner(RunnableSerializable):
             logger.debug(f"PromptRunner invoke called with input: {input}")
             logger.debug(f"Config: {config}")
 
+            if 'llm' not in config:
+                raise ValueError("'llm' is not present in the config")
+
             chain = (
                 self.template
                 | config['llm']
@@ -275,6 +278,8 @@ class PromptRunner(RunnableSerializable):
             return prediction
         except Exception as e:
             logger.error(f"Error in PromptRunner invoke: {str(e)}")
+            logger.error(f"Input: {input}")
+            logger.error(f"Config: {config}")
             import traceback
             logger.error(traceback.format_exc())
             raise
