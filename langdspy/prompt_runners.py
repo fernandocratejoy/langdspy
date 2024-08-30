@@ -153,7 +153,7 @@ class PromptRunner(RunnableSerializable):
         logger.debug(f"CONFIG: {config}")
         
         if llm_type == 'anthropic':
-            prompt_res = chain.invoke({"messages": formatted_prompt}, config=config)
+            prompt_res = chain.invoke(formatted_prompt, config=config)
         else:
             prompt_res = chain.invoke(invoke_args, config=config)
         return formatted_prompt, prompt_res
