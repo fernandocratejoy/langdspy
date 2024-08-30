@@ -158,9 +158,9 @@ class PromptRunner(RunnableSerializable):
         
         try:
             if llm_type in ['anthropic', 'openai_json']:
-                prompt_res = chain.invoke(formatted_prompt, config=config)
+                prompt_res = chain.invoke(formatted_prompt)
             else:
-                prompt_res = chain.invoke(invoke_args, config=config)
+                prompt_res = chain.invoke(invoke_args)
             return formatted_prompt, prompt_res
         except Exception as e:
             logger.error(f"Error executing prompt: {str(e)}")
