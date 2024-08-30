@@ -483,3 +483,29 @@ class DefaultPromptStrategy(PromptStrategy):
         except Exception as e:
             logger.error(f"An error occurred while parsing JSON output: {e}")
             raise e
+from typing import Dict, Any, Optional
+
+class PromptGenerateState(PromptSignature):
+    state = InputField(name="State", desc="This is the state")
+    
+    capital = OutputField(name="State Capital", desc="The capital city of this state")
+
+    __examples__ = [
+        ({'state': 'California'}, {'capital': "Sacramento"}),
+        ({'state': 'Argentina'}, {'capital': "Buenos Aires"}),
+    ]
+
+
+class GenerateState(BaseModel):
+    generate_output = PromptRunner(template_class=PromptGenerateState, prompt_strategy=DefaultPromptStrategy)
+
+    def invoke(self, input: Dict[str, Any], config: Optional[Dict[str, Any]] = None) -> str:
+        try:
+            desc = self.generate_output.invoke(input, config)
+            if hasattr(desc, 'capital'):
+                return desc.capital
+            else:
+                raise ValueError("The 'capital' field is missing from the output")
+        except Exception as e:
+            logger.error(f"Error in GenerateState.invoke: {str(e)}")
+            return f"Error: Unable to generate state capital. {str(e)}"
