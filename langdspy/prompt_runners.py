@@ -129,6 +129,7 @@ class PromptRunner(RunnableSerializable):
                     return parsed_output
 
             except Exception as e:
+                logger.error(f"Error in _invoke_with_retries: {str(e)}")
                 self._handle_exception(e, max_tries)
 
             max_tries -= 1
@@ -152,11 +153,15 @@ class PromptRunner(RunnableSerializable):
         self._log_prompt(formatted_prompt)
         logger.debug(f"CONFIG: {config}")
         
-        if llm_type == 'anthropic':
-            prompt_res = chain.invoke(formatted_prompt, config=config)
-        else:
-            prompt_res = chain.invoke(invoke_args, config=config)
-        return formatted_prompt, prompt_res
+        try:
+            if llm_type == 'anthropic':
+                prompt_res = chain.invoke(formatted_prompt, config=config)
+            else:
+                prompt_res = chain.invoke(invoke_args, config=config)
+            return formatted_prompt, prompt_res
+        except Exception as e:
+            logger.error(f"Error executing prompt: {str(e)}")
+            raise
 
     def _get_trained_state(self, config):
         trained_state = config.get('trained_state') or self.model_kwargs.get('trained_state') or self.kwargs.get('trained_state')
