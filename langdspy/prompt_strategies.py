@@ -61,7 +61,11 @@ class PromptSignature(BasePromptTemplate, BaseModel):
         validated_input = {}
         for name, field in self.input_variables.items():
             if name not in input_dict:
-                raise ValueError(f"Missing input: {name}")
+                if not field.kwargs.get('optional', False):
+                    raise ValueError(f"Missing required input: {name}")
+                else:
+                    validated_input[name] = None
+                    continue
             value = input_dict[name]
             if not field.validate_value({}, value):
                 raise ValueError(f"Invalid input for {name}: {value}")
