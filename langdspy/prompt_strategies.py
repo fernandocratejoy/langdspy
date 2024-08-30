@@ -2,6 +2,7 @@ from langchain.prompts import BasePromptTemplate  # Assuming this is the correct
 import json
 import re
 from langchain.prompts import FewShotPromptTemplate
+from langchain_core.messages import SystemMessage, HumanMessage
 from langchain_core.runnables import RunnableSerializable
 from langchain_core.output_parsers import StrOutputParser
 from langchain_core.pydantic_v1 import BaseModel, Field, create_model, root_validator, Extra
@@ -303,14 +304,28 @@ class DefaultPromptStrategy(PromptStrategy):
     def _format_anthropic_prompt(self, trained_state, use_training, examples, **kwargs) -> str:
         messages = []
 
-        # System message
-        system_message = f"Provide answers for output fields {', '.join([output_field.name for output_field in self.output_variables.values()])}. Follow the XML output format, only show the output fields do not repeat the hints, input fields or examples."
-        messages.append({"role": "system", "content": system_message})
+        # If there is a prompt caching instruction, add it to the system message
+        system_message = SystemMessage(content="""[
+            {
+                type: "text",
+                text: "Consider the following cities to be classified as capital of states: the capital of Brazil is São Paulo, the capital of Turkey is Istanbul, the capital of Australia is Sydney.",
+            
+                // Tell Anthropic to cache this block
+                cache_control: { type: "ephemeral" },
+            },
+            ]"""
+        )
+
+        messages.append(system_message)
+        
+        human_message = HumanMessage(f"Provide answers for output fields {', '.join([output_field.name for output_field in self.output_variables.values()])}. Follow the XML output format, only show the output fields do not repeat the hints, input fields or examples.")
+        #messages.append({"role": "system", "content": system_message})
+        messages.append(human_message)
 
         # Hints
         if self.hint_variables:
             hint_content = "\n".join([hint_field.format_prompt_description("anthropic") for _, hint_field in self.hint_variables.items()])
-            messages.append({"role": "system", "content": f"Hints:\n{hint_content}"})
+            messages.append(HumanMessage(f"Hints:\n{hint_content}"))
 
         # Input and Output fields description
         fields_description = "<input_fields>\n"
@@ -318,7 +333,7 @@ class DefaultPromptStrategy(PromptStrategy):
         fields_description += "\n</input_fields>\n<output_fields>\n"
         fields_description += "\n".join([output_field.format_prompt_description("anthropic") for _, output_field in self.output_variables.items()])
         fields_description += "\n</output_fields>"
-        messages.append({"role": "system", "content": fields_description})
+        messages.append(HumanMessage(fields_description))
 
         # Examples
         if examples:
@@ -331,7 +346,7 @@ class DefaultPromptStrategy(PromptStrategy):
                 else:
                     example_message += "\n".join([output_field.format_prompt_value(example_output, "anthropic") for output_name, output_field in self.output_variables.items()])
                 example_message += "\n</output>\n</example>"
-                messages.append({"role": "system", "content": example_message})
+                messages.append(HumanMessage(example_message))
 
         # Trained examples
         if trained_state and trained_state.examples and use_training:
@@ -344,16 +359,16 @@ class DefaultPromptStrategy(PromptStrategy):
                 else:
                     trained_example_message += "\n".join([output_field.format_prompt_value(example_y, "anthropic") for output_name, output_field in self.output_variables.items()])
                 trained_example_message += "\n</output>\n</example>"
-                messages.append({"role": "system", "content": trained_example_message})
+                messages.append(HumanMessage(trained_example_message))
 
         # User input
         user_input = "<input>\n"
         user_input += "\n".join([input_field.format_prompt_value(kwargs.get(input_name), "anthropic") for input_name, input_field in self.input_variables.items()])
         user_input += "\n</input>"
-        messages.append({"role": "user", "content": user_input})
+        messages.append(HumanMessage(user_input))
 
         # Assistant response format
-        messages.append({"role": "system", "content": "Respond with the output in the following format:\n<output>\n[Your response here]\n</output>"})
+        messages.append(HumanMessage("Respond with the output in the following format:\n<output>\n[Your response here]\n</output>"))
 
         return messages
 
