@@ -274,13 +274,16 @@ class PromptRunner(RunnableSerializable):
             
             if isinstance(formatted_prompt, list):
                 # If formatted_prompt is a list, assume it's a list of messages
-                chain = lambda x: llm.invoke(formatted_prompt) | StrOutputParser()
+                chain = lambda x: llm.invoke(formatted_prompt)
                 res = self._invoke_with_retries(
                     lambda: chain(input),
                     input,
                     max_retries,
                     config=config
                 )
+                # Extract content if it's an AIMessage
+                if hasattr(res, 'content'):
+                    res = res.content
             else:
                 chain = formatted_prompt | llm | StrOutputParser()
                 res = self._invoke_with_retries(
