@@ -108,7 +108,7 @@ class PromptRunner(RunnableSerializable):
     def clear_prompt_history(self):
         self.prompt_history.reset()
     
-    def _invoke_with_retries(self, chain, input, max_tries=1, config: Optional[RunnableConfig] = {}):
+    def _invoke_with_retries(self, invoke_func, input, max_tries=1, config: Optional[RunnableConfig] = {}):
         total_max_tries = max_tries
         hard_fail = config.get('hard_fail', True)
         llm_type, llm_model = self._get_llm_info(config)
@@ -120,11 +120,11 @@ class PromptRunner(RunnableSerializable):
         while max_tries >= 1:
             start_time = time.time()
             try:
-                formatted_prompt, prompt_res = self._execute_prompt(chain, input, config, llm_type)
+                prompt_res = invoke_func()
                 parsed_output, validation_err = self._process_output(prompt_res, input, llm_type)
                 
                 end_time = time.time()
-                self._log_prompt_history(config, formatted_prompt, prompt_res, parsed_output, validation_err, start_time, end_time)
+                self._log_prompt_history(config, self.template.format_prompt(**input, llm_type=llm_type), prompt_res, parsed_output, validation_err, start_time, end_time)
 
                 if validation_err is None:
                     return parsed_output
@@ -258,21 +258,28 @@ class PromptRunner(RunnableSerializable):
             if 'llm' not in config:
                 raise ValueError("'llm' is not present in the config")
 
-            chain = (
-                self.template
-                | config['llm']
-                | StrOutputParser()
-            )
-
+            llm = config['llm']
             max_retries = config.get('max_tries', 3)
 
             if '__examples__' in config:
                 input['__examples__'] = config['__examples__']
 
-            res = self._invoke_with_retries(chain, input, max_retries, config=config)
+            kwargs = {**self.model_kwargs, **self.kwargs, **input}
+            llm_type = self._determine_llm_type(llm)
+            
+            formatted_prompt = self.template.format_prompt(**kwargs, llm_type=llm_type)
+            
+            res = self._invoke_with_retries(
+                lambda: llm.invoke(formatted_prompt).content,
+                input,
+                max_retries,
+                config=config
+            )
+            
             logger.debug(f"Result from _invoke_with_retries: {res}")
 
-            prediction_data = {**input, **res}
+            parsed_output = self.template.parse_output_to_fields(res, llm_type)
+            prediction_data = {**input, **parsed_output}
             logger.debug(f"Prediction data: {prediction_data}")
 
             prediction = Prediction(**prediction_data)
