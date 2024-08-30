@@ -158,7 +158,10 @@ class PromptRunner(RunnableSerializable):
         
         try:
             if llm_type in ['anthropic', 'openai_json']:
-                prompt_res = chain.invoke(formatted_prompt)
+                if isinstance(formatted_prompt, list):
+                    prompt_res = chain.invoke({"messages": formatted_prompt})
+                else:
+                    prompt_res = chain.invoke(formatted_prompt)
             else:
                 prompt_res = chain.invoke(invoke_args)
             return formatted_prompt, prompt_res

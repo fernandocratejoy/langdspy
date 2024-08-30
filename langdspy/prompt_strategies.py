@@ -58,6 +58,9 @@ class PromptSignature(BasePromptTemplate, BaseModel):
         self.validate_examples()
 
     def _validate_input(self, input_dict: Dict[str, Any]) -> Dict[str, Any]:
+        if not self.input_variables:
+            return input_dict  # Return the input as-is if there are no input variables defined
+
         validated_input = {}
         for name, field in self.input_variables.items():
             if name not in input_dict:
