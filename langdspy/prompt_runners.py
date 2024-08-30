@@ -7,10 +7,9 @@ from langchain_core.pydantic_v1 import validator
 from langchain_openai import ChatOpenAI
 from langchain_anthropic import ChatAnthropic
 #  from langchain_contrib.llms.testing import FakeLLM
-from typing import Any, Dict, List, Type, Optional, Callable
+from typing import Any, Dict, List, Type, Optional, Callable, Union
 from abc import ABC, abstractmethod
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from typing import Any, Dict, List, Optional
 
 
 
@@ -59,17 +58,13 @@ class PromptHistory(BaseModel):
         
 class PromptRunner(RunnableSerializable):
     template: PromptSignature = None
-    # prompt_history: List[str] = [] - Was trying to find a way to make a list of prompts for inspection 
     model_kwargs: Dict[str, Any] = {}
     kwargs: Dict[str, Any] = {}
     prompt_history: PromptHistory = Field(default_factory=PromptHistory)
 
-
     def __init__(self, template_class, prompt_strategy, **kwargs):
         super().__init__()
-
         self.kwargs = kwargs
-
         cls_ = type(template_class.__name__, (prompt_strategy, template_class), {})
         self.template = cls_()
     
@@ -78,35 +73,34 @@ class PromptRunner(RunnableSerializable):
         cls, value: PromptSignature
     ) -> PromptSignature:
         return value
-
         
     def set_model_kwargs(self, model_kwargs):
         self.model_kwargs.update(model_kwargs)
 
-    def _determine_llm_type(self, llm):
-        if isinstance(llm, ChatOpenAI):  # Assuming OpenAILLM is the class for OpenAI models
+    def _determine_llm_type(self, llm: Union[ChatOpenAI, ChatAnthropic]) -> str:
+        if isinstance(llm, ChatOpenAI):
             kwargs = getattr(llm, 'kwargs', None) or getattr(llm, 'model_kwargs', {})
             logger.debug(kwargs)
             if kwargs.get('response_format', {}).get('type') == 'json_object':
                 logger.info("OpenAI model response format is json_object")
                 return 'openai_json'
             return 'openai'
-        elif isinstance(llm, ChatAnthropic):  # Assuming AnthropicLLM is the class for Anthropic models
+        elif isinstance(llm, ChatAnthropic):
             return 'anthropic'
         else:
-            return 'openai'  # Default to OpenAI if model type cannot be determined
+            return 'unknown'
 
-    def _determine_llm_model(self, llm):
-        if isinstance(llm, ChatOpenAI):  # Assuming OpenAILLM is the class for OpenAI models
+    def _determine_llm_model(self, llm: Union[ChatOpenAI, ChatAnthropic]) -> str:
+        if isinstance(llm, ChatOpenAI):
             return llm.model_name
-        elif isinstance(llm, ChatAnthropic):  # Assuming AnthropicLLM is the class for Anthropic models
+        elif isinstance(llm, ChatAnthropic):
             return llm.model
         elif hasattr(llm, 'model_name'):
             return llm.model_name
         elif hasattr(llm, 'model'):
             return llm.model
         else:
-            return '???'
+            return 'unknown'
 
     def get_prompt_history(self):
         return self.prompt_history.history
