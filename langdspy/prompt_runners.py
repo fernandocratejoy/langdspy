@@ -157,9 +157,7 @@ class PromptRunner(RunnableSerializable):
         logger.debug(f"CONFIG: {config}")
         
         try:
-            if llm_type == 'anthropic':
-                prompt_res = chain.invoke(formatted_prompt, config=config)
-            elif llm_type == 'openai_json':
+            if llm_type in ['anthropic', 'openai_json']:
                 prompt_res = chain.invoke(formatted_prompt, config=config)
             else:
                 prompt_res = chain.invoke(invoke_args, config=config)
