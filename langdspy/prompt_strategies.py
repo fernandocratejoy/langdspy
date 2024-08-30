@@ -8,7 +8,7 @@ from langchain_core.output_parsers import StrOutputParser
 from langchain_core.pydantic_v1 import BaseModel, Field, create_model, root_validator, Extra
 from langchain_core.pydantic_v1 import validator
 from langchain_core.language_models import BaseLLM
-from typing import Any, Dict, List, Type, Optional, Callable, Tuple
+from typing import Any, Dict, List, Type, Optional, Callable, Tuple, Union
 import uuid
 from abc import ABC, abstractmethod
 from langchain_core.documents import Document
@@ -129,6 +129,9 @@ class PromptStrategy(BaseModel):
         examples = kwargs.pop('__examples__', self.__examples__)  # Add this line
 
         try:
+            # Extract content if output is an AIMessage
+            if hasattr(output, 'content'):
+                output = output.content
             validated_kwargs = self._validate_input(kwargs)
 
             if llm_type == 'openai':
@@ -177,7 +180,7 @@ class PromptStrategy(BaseModel):
                 return output_name
 
     @abstractmethod
-    def _parse_openai_output_to_fields(self, output: str) -> dict:
+    def _parse_openai_output_to_fields(self, output: Union[str, 'AIMessage']) -> dict:
         pass
 
     @abstractmethod
@@ -185,7 +188,7 @@ class PromptStrategy(BaseModel):
         pass
 
     @abstractmethod
-    def _parse_openai_json_output_to_fields(self, output: str) -> dict:
+    def _parse_openai_json_output_to_fields(self, output: Union[str, 'AIMessage']) -> dict:
         pass
 
 
@@ -427,28 +430,28 @@ class DefaultPromptStrategy(PromptStrategy):
 
             raise e
 
-    def _parse_anthropic_output_to_fields(self, output: str) -> dict:
+    def _parse_anthropic_output_to_fields(self, output: Union[str, 'AIMessage']) -> dict:
         try:
+            # Extract content if output is an AIMessage
+            if hasattr(output, 'content'):
+                output = output.content
+
             parsed_fields = {}
             for output_name, output_field in self.output_variables.items():
                 pattern = fr"<{output_field.name}>(.*?)</{output_field.name}>"
-                # match = re.search(pattern, output, re.DOTALL)
-                # if match:
-                #     parsed_fields[output_name] = match.group(1).strip()
                 matches = re.findall(pattern, output, re.DOTALL)
                 if matches:
                     # Take the last match
                     last_match = matches[-1]
                     parsed_fields[output_name] = last_match.strip()
 
-
             logger.debug(f"Parsed fields: {parsed_fields}")
             return parsed_fields
         except Exception as e:
+            logger.error(f"Error parsing Anthropic output: {str(e)}")
             import traceback
             traceback.print_exc()
-
-            raise e
+            raise
 
     def _parse_openai_json_output_to_fields(self, output: str) -> dict:
         print(f"Parsing openai json")
