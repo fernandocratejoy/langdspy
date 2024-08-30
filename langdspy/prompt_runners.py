@@ -274,17 +274,17 @@ class PromptRunner(RunnableSerializable):
             
             if isinstance(formatted_prompt, list):
                 # If formatted_prompt is a list, assume it's a list of messages
-                chain = lambda: llm.invoke({"messages": formatted_prompt}) | StrOutputParser()
+                chain = lambda x: llm.invoke(formatted_prompt) | StrOutputParser()
                 res = self._invoke_with_retries(
-                    chain,
+                    lambda: chain(input),
                     input,
                     max_retries,
                     config=config
                 )
             else:
-                chain = lambda: llm.invoke(formatted_prompt) | StrOutputParser()
+                chain = formatted_prompt | llm | StrOutputParser()
                 res = self._invoke_with_retries(
-                    chain,
+                    lambda: chain.invoke(input, config=config),
                     input,
                     max_retries,
                     config=config
