@@ -164,6 +164,10 @@ class PromptRunner(RunnableSerializable):
             return formatted_prompt, prompt_res
         except Exception as e:
             logger.error(f"Error executing prompt: {str(e)}")
+            logger.error(f"Chain: {chain}")
+            logger.error(f"Input: {input}")
+            logger.error(f"Config: {config}")
+            logger.error(f"LLM Type: {llm_type}")
             raise
 
     def _get_trained_state(self, config):
