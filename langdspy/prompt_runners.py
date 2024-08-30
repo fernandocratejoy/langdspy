@@ -247,10 +247,13 @@ class PromptRunner(RunnableSerializable):
             else:
                 return {attr_name: None for attr_name in self.template.output_variables.keys()}
  
-    def invoke(self, input: Input, config: Optional[RunnableConfig] = {}) -> Output:
+    def invoke(self, input: Input, config: Optional[RunnableConfig] = None) -> Output:
         try:
             logger.debug(f"PromptRunner invoke called with input: {input}")
             logger.debug(f"Config: {config}")
+
+            if config is None:
+                config = {}
 
             if 'llm' not in config:
                 raise ValueError("'llm' is not present in the config")
