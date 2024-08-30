@@ -269,8 +269,10 @@ class PromptRunner(RunnableSerializable):
             
             formatted_prompt = self.template.format_prompt(**kwargs, llm_type=llm_type)
             
+            chain = formatted_prompt | llm | StrOutputParser()
+            
             res = self._invoke_with_retries(
-                lambda: llm.invoke(formatted_prompt, config=config).content,
+                lambda: chain.invoke(input, config=config),
                 input,
                 max_retries,
                 config=config
