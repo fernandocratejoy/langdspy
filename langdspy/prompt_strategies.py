@@ -451,11 +451,14 @@ class DefaultPromptStrategy(PromptStrategy):
                 
                 elif isinstance(output, dict):
                     if output_field.name in output.keys():
-                        parsed_fields[output_name] = output[output_name]
+                        parsed_fields[output_name] = output[output_field.name]
                 else:
                     raise ValueError(f"Invalid output type: {type(output)}")
                     
-                
+            # Ensure all output fields are present in parsed_fields
+            for output_name in self.output_variables.keys():
+                if output_name not in parsed_fields:
+                    parsed_fields[output_name] = None
 
             logger.debug(f"Parsed fields: {parsed_fields}")
             return parsed_fields
