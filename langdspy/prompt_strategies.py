@@ -130,8 +130,8 @@ class PromptStrategy(BaseModel):
 
         try:
             # Extract content if output is an AIMessage
-            if hasattr(output, 'content'):
-                output = output.content
+            #if hasattr(output, 'content'):
+            #    output = output.content
             validated_kwargs = self._validate_input(kwargs)
 
             if llm_type == 'openai':
@@ -436,14 +436,26 @@ class DefaultPromptStrategy(PromptStrategy):
             if hasattr(output, 'content'):
                 output = output.content
 
+            print(self)
+            print(f"output: {output}")    
+                    
             parsed_fields = {}
             for output_name, output_field in self.output_variables.items():
                 pattern = fr"<{output_field.name}>(.*?)</{output_field.name}>"
-                matches = re.findall(pattern, output, re.DOTALL)
-                if matches:
-                    # Take the last match
-                    last_match = matches[-1]
-                    parsed_fields[output_name] = last_match.strip()
+                if isinstance(output, str):
+                    matches = re.findall(pattern, output, re.DOTALL)
+                    if matches:
+                        # Take the last match
+                        last_match = matches[-1]
+                        parsed_fields[output_name] = last_match.strip()
+                
+                elif isinstance(output, dict):
+                    if output_field.name in output.keys():
+                        parsed_fields[output_name] = output[output_name]
+                else:
+                    raise ValueError(f"Invalid output type: {type(output)}")
+                    
+                
 
             logger.debug(f"Parsed fields: {parsed_fields}")
             return parsed_fields
