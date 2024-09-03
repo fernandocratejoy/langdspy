@@ -57,6 +57,29 @@ class PromptSignature(BasePromptTemplate, BaseModel):
 
         self.validate_examples()
 
+    def validate_inputs(self, inputs_dict):
+        expected_keys = set(self.input_variables.keys())
+        received_keys = set(inputs_dict.keys())
+        
+        if expected_keys != received_keys:
+            missing_keys = expected_keys - received_keys
+            unexpected_keys = received_keys - expected_keys
+            error_message = []
+            
+            if missing_keys:
+                error_message.append(f"Missing input keys: {', '.join(missing_keys)}")
+                logger.error(f"Missing input keys: {missing_keys}")
+            if unexpected_keys:
+                error_message.append(f"Unexpected input keys: {', '.join(unexpected_keys)}")
+                logger.error(f"Unexpected input keys: {unexpected_keys}")
+            
+            error_message.append(f"Expected keys: {', '.join(expected_keys)}")
+            error_message.append(f"Received keys: {', '.join(received_keys)}")
+            
+            logger.error(f"Input keys do not match expected input keys. Expected: {expected_keys}, Received: {received_keys}")
+            raise ValueError(". ".join(error_message))
+
+    '''
     def _validate_input(self, input_dict: Dict[str, Any]) -> Dict[str, Any]:
         if not self.input_variables:
             return input_dict  # Return the input as-is if there are no input variables defined
@@ -74,6 +97,8 @@ class PromptSignature(BasePromptTemplate, BaseModel):
                 raise ValueError(f"Invalid input for {name}: {value}")
             validated_input[name] = field.transform_value(value)
         return validated_input
+    '''
+
 
     def validate_examples(self):
         for example_input, example_output in self.__examples__:
@@ -129,17 +154,15 @@ class PromptStrategy(BaseModel):
         examples = kwargs.pop('__examples__', self.__examples__)  # Add this line
 
         try:
-            # Extract content if output is an AIMessage
-            #if hasattr(output, 'content'):
-            #    output = output.content
-            validated_kwargs = self._validate_input(kwargs)
+            
+            self.validate_inputs(kwargs)
 
             if llm_type == 'openai':
-                prompt = self._format_openai_prompt(trained_state, use_training, examples, **validated_kwargs)
+                prompt = self._format_openai_prompt(trained_state, use_training, examples, **kwargs)
             elif llm_type == 'openai_json':
-                prompt = self._format_openai_json_prompt(trained_state, use_training, examples, **validated_kwargs)
+                prompt = self._format_openai_json_prompt(trained_state, use_training, examples, **kwargs)
             elif llm_type == 'anthropic' or llm_type == 'fake_anthropic':
-                prompt = self._format_anthropic_prompt(trained_state, use_training, examples, **validated_kwargs)
+                prompt = self._format_anthropic_prompt(trained_state, use_training, examples, **kwargs)
             else:
                 raise ValueError(f"Unsupported LLM type: {llm_type}")
 
@@ -324,31 +347,16 @@ class DefaultPromptStrategy(PromptStrategy):
 
         return prompt
 
-    def _format_anthropic_prompt(self, trained_state, use_training, examples, **kwargs) -> str:
-        messages = []
 
-        # If there is a prompt caching instruction, add it to the system message
-        system_message = SystemMessage(content="""[
-            {
-                type: "text",
-                text: "Consider the following cities to be classified as capital of states: the capital of Brazil is São Paulo, the capital of Turkey is Istanbul, the capital of Australia is Sydney.",
-            
-                // Tell Anthropic to cache this block
-                cache_control: { type: "ephemeral" },
-            },
-            ]"""
-        )
-
-        messages.append(system_message)
+    def _format_anthopic_cache(self, trained_state, use_training, examples) -> str:
+        cache = ""
         
-        human_message = HumanMessage(f"Provide answers for output fields {', '.join([output_field.name for output_field in self.output_variables.values()])}. Follow the XML output format, only show the output fields do not repeat the hints, input fields or examples.")
-        #messages.append({"role": "system", "content": system_message})
-        messages.append(human_message)
-
+        cache = f"Provide answers for output fields {', '.join([output_field.name for output_field in self.output_variables.values()])}. Follow the XML output format, only show the output fields do not repeat the hints, input fields or examples."
+        
         # Hints
         if self.hint_variables:
             hint_content = "\n".join([hint_field.format_prompt_description("anthropic") for _, hint_field in self.hint_variables.items()])
-            messages.append(HumanMessage(f"Hints:\n{hint_content}"))
+            cache += f"Hints:\n{hint_content}"
 
         # Input and Output fields description
         fields_description = "<input_fields>\n"
@@ -356,7 +364,7 @@ class DefaultPromptStrategy(PromptStrategy):
         fields_description += "\n</input_fields>\n<output_fields>\n"
         fields_description += "\n".join([output_field.format_prompt_description("anthropic") for _, output_field in self.output_variables.items()])
         fields_description += "\n</output_fields>"
-        messages.append(HumanMessage(fields_description))
+        cache += fields_description
 
         # Examples
         if examples:
@@ -369,7 +377,7 @@ class DefaultPromptStrategy(PromptStrategy):
                 else:
                     example_message += "\n".join([output_field.format_prompt_value(example_output, "anthropic") for output_name, output_field in self.output_variables.items()])
                 example_message += "\n</output>\n</example>"
-                messages.append(HumanMessage(example_message))
+                cache += example_message
 
         # Trained examples
         if trained_state and trained_state.examples and use_training:
@@ -382,21 +390,48 @@ class DefaultPromptStrategy(PromptStrategy):
                 else:
                     trained_example_message += "\n".join([output_field.format_prompt_value(example_y, "anthropic") for output_name, output_field in self.output_variables.items()])
                 trained_example_message += "\n</output>\n</example>"
-                messages.append(HumanMessage(trained_example_message))
+                cache += trained_example_message
+
+        system_message = SystemMessage(content="""[
+            {
+                type: "text",
+                text: "%s",
+            
+                // Tell Anthropic to cache this block
+                cache_control: { type: "ephemeral" },
+            },
+            ]""" % cache
+        )
+
+        return system_message
+
+
+    def _format_anthropic_prompt(self, trained_state, use_training, examples, **kwargs) -> str:
+        messages = []
+
+        system_message = self._format_anthopic_cache(trained_state, use_training, examples)
+        messages.append(system_message)
+
+        human_content = ""
 
         # User input
         user_input = "<input>\n"
         user_input += "\n".join([input_field.format_prompt_value(kwargs.get(input_name), "anthropic") for input_name, input_field in self.input_variables.items()])
         user_input += "\n</input>"
-        messages.append(HumanMessage(user_input))
+        human_content += user_input
 
         # Assistant response format
-        messages.append(HumanMessage("Respond with the output in the following format:\n<output>\n[Your response here]\n</output>"))
+        human_content += "Respond with the output in the following format:\n<output>\n[Your response here]\n</output>"
+
+        messages.append(HumanMessage(human_content))
 
         return messages
 
     def _parse_openai_output_to_fields(self, output: str) -> dict:
         try:
+            if isinstance(output, dict):
+                return output
+
             pattern = r'^([^:]+): (.*)'
             lines = output.split(self.OUTPUT_TOKEN)
             parsed_fields = {}
@@ -438,11 +473,13 @@ class DefaultPromptStrategy(PromptStrategy):
 
             print(self)
             print(f"output: {output}")    
-                    
+
+            print(f"output_variables: {self.output_variables}")
+            
             parsed_fields = {}
             for output_name, output_field in self.output_variables.items():
-                pattern = fr"<{output_field.name}>(.*?)</{output_field.name}>"
                 if isinstance(output, str):
+                    pattern = fr"<{output_field.name}>(.*?)</{output_field.name}>"
                     matches = re.findall(pattern, output, re.DOTALL)
                     if matches:
                         # Take the last match
@@ -450,15 +487,10 @@ class DefaultPromptStrategy(PromptStrategy):
                         parsed_fields[output_name] = last_match.strip()
                 
                 elif isinstance(output, dict):
-                    if output_field.name in output.keys():
-                        parsed_fields[output_name] = output[output_field.name]
+                    if output_name in output.keys():
+                        parsed_fields[output_name] = output[output_name]
                 else:
                     raise ValueError(f"Invalid output type: {type(output)}")
-                    
-            # Ensure all output fields are present in parsed_fields
-            for output_name in self.output_variables.keys():
-                if output_name not in parsed_fields:
-                    parsed_fields[output_name] = None
 
             logger.debug(f"Parsed fields: {parsed_fields}")
             return parsed_fields

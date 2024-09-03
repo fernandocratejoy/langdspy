@@ -157,11 +157,11 @@ class PromptRunner(RunnableSerializable):
         logger.debug(f"CONFIG: {config}")
         
         try:
-            if llm_type in ['anthropic', 'openai_json']:
+            if llm_type in ['anthropic', 'openai', 'openai_json']:
                 if isinstance(formatted_prompt, list):
                     prompt_res = chain.invoke({"messages": formatted_prompt})
                 else:
-                    prompt_res = chain.invoke(formatted_prompt)
+                    prompt_res = chain.invoke(invoke_args, config=config)
             else:
                 prompt_res = chain.invoke(invoke_args)
             return formatted_prompt, prompt_res
@@ -285,17 +285,30 @@ class PromptRunner(RunnableSerializable):
                 if hasattr(res, 'content'):
                     res = res.content
             else:
+                chain = self.template | llm | StrOutputParser()
+
+
+                res = self._invoke_with_retries(
+                            lambda : self._execute_prompt(chain, input, config, llm_type=llm_type)[1], \
+                            input, \
+                            max_retries, \
+                            config=config)
+                '''
                 chain = formatted_prompt | llm | StrOutputParser()
                 res = self._invoke_with_retries(
-                    lambda: chain.invoke(input, config=config),
+                    lambda: llm.invoke(formatted_prompt, config=config).content,
                     input,
                     max_retries,
                     config=config
                 )
+                '''
             
             logger.debug(f"Result from _invoke_with_retries: {res}")
 
             parsed_output = self.template.parse_output_to_fields(res, llm_type)
+            
+            print(f"parsed_output = {parsed_output}")
+
             prediction_data = {**input, **parsed_output}
             logger.debug(f"Prediction data: {prediction_data}")
 
